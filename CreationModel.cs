@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Autodesk.Revit.ApplicationServices;
 
 namespace CreationModelPlagin
 {
@@ -27,6 +28,7 @@ namespace CreationModelPlagin
             
             return Result.Succeeded;
         }
+
         private static void CreateWalls(Document doc, Level level1, Level level2, double width, double depth)
         {
 
@@ -57,8 +59,10 @@ namespace CreationModelPlagin
             CreateWindow(doc, level1, walls[1]);
             CreateWindow(doc, level1, walls[2]);
             CreateWindow(doc, level1, walls[3]);
+            AddRoof(doc, level2, walls, widthWall, depthWall);
             transaction.Commit();
         }
+
         private static void CreateDoor(Document doc, Level level1, Wall wall)
         {
             FamilySymbol doorType = new FilteredElementCollector(doc)
@@ -78,6 +82,7 @@ namespace CreationModelPlagin
                 doorType.Activate();
             doc.Create.NewFamilyInstance(point, doorType, wall, level1, StructuralType.NonStructural);
         }
+
         private static void CreateWindow(Document doc, Level level1, Wall wall)
         {
             FamilySymbol windowType = new FilteredElementCollector(doc)
@@ -99,6 +104,32 @@ namespace CreationModelPlagin
             Parameter sillHeight = window.get_Parameter(BuiltInParameter.INSTANCE_SILL_HEIGHT_PARAM);
             double sh = UnitUtils.ConvertToInternalUnits(1000, UnitTypeId.Millimeters);
             sillHeight.Set(sh);
+        }
+
+        private static void AddRoof(Document doc, Level level2, List<Wall> walls, double width, double depth)
+        {
+            Application application = doc.Application;
+
+            RoofType roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault();
+
+            double dx = width / 2;
+            double dy = depth / 2;
+            double wallWidth = walls[0].Width;
+            double dt = wallWidth / 2;
+
+            double facade = level2.get_Parameter(BuiltInParameter.LEVEL_ELEV).AsDouble();
+
+            CurveArray curveArray = new CurveArray();
+            curveArray.Append(Line.CreateBound(new XYZ((-dx - dt), (-dy - dt), facade), new XYZ((-dx - dt), 0, 20)));
+            curveArray.Append(Line.CreateBound(new XYZ((-dx - dt), 0, 20), new XYZ((-dx - dt), (dy + dt), facade)));
+
+            ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0), new XYZ(0, 0, 20), new XYZ(0, 20, 0), doc.ActiveView);
+            doc.Create.NewExtrusionRoof(curveArray, plane, level2, roofType, (-dx - dt), (dx + dt));
         }
 
         private static void FirstLevels(Document doc, out Level level1, out Level level2)
